@@ -1,0 +1,29 @@
+{
+  "name": "sellmate_ops_console",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.5.1",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "dependencies": {
+    "axios": "^1.17.0",
+    "crypto-js": "^4.2.0",
+    "dompurify": "^3.4.8"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/dompurify": "^3.2.0"
+  }
+}
