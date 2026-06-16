@@ -30,13 +30,11 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const config = error.config as InternalAxiosRequestConfig & { _retryCount?: number };
     
-    // Read backend's native Request ID / Correlation ID
     const correlationId = error.response?.headers["x-request-id"] || 
                           (error.response?.data as any)?.correlation_id;
     
     if (correlationId) {
       console.error(`[API Error] Correlation ID: ${correlationId}`);
-      // Attach to error object for component-level display
       (error as any).correlationId = correlationId;
     }
 
@@ -69,11 +67,12 @@ apiClient.interceptors.response.use(
 );
 
 export const authAPI = {
-  login: (shopId: string, password: string) =>
-  apiClient.post<LoginResponse>("/api/auth/login", {
-    shop_id: shopId,
-    password,
-  }),
+  // FIXED: Changed payload interface and body to use 'phone' instead of 'shop_id'
+  login: (phone: string, password: string) =>
+    apiClient.post<LoginResponse>("/api/auth/login", {
+      phone,
+      password,
+    }),
   verifyToken: () =>
     apiClient.post("/api/auth/verify-token", {}),
 };
