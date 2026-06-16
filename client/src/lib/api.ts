@@ -1,216 +1,98 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from "axios";
+import { secureStorage } from "./security";
+import { LoginResponse, Merchant, SystemStats, AuditLog, HealthStatus } from "./types";
 
-const API_BASE_URL = 'https://sellmate-ai-backend.onrender.com/api';
+const API_BASE_URL = "https://sellmate-ai-backend.onrender.com";
 
-export interface LoginRequest {
-  shop_id: string;
-  password: string;
-}
+const apiClient: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-export interface LoginResponse {
-  success: boolean;
-  message: string;
-  token: string;
-  shop_id: string;
-  shop_name: string;
-  owner_name: string;
-}
-
-export interface MeResponse {
-  success: boolean;
-  shop_id: string;
-  shop_name: string;
-  owner_name: string;
-  phone: string;
-  requirements: string;
-}
-
-export interface DashboardOverviewStats {
-  pending_payments: number;
-  recent_orders: number;
-  confirmed_orders: number;
-  cancelled_orders: number;
-  total_orders: number;
-}
-
-export interface DashboardOverview {
-  stats: DashboardOverviewStats;
-  recent_orders: Order[];
-}
-
-export interface Order {
-  order_id: string;
-  customer_name: string;
-  phone: string;
-  amount: number;
-  status: 'pending' | 'processing' | 'completed' | 'cancelled';
-  created_at: string;
-}
-
-export interface ChartData {
-  date: string;
-  revenue: number;
-}
-
-export interface TopProduct {
-  product_id: string;
-  product_name: string;
-  sales: number;
-  revenue: number;
-}
-
-export interface Product {
-  product_id: string;
-  product_name: string;
-  price: number;
-  status: 'active' | 'inactive';
-  created_date: string;
-}
-
-export interface AnalyticsData {
-  revenue_trend?: ChartData[];
-  orders_trend?: ChartData[];
-}
-
-export interface ProfileData {
-  shop_name: string;
-  owner_name: string;
-  phone: string;
-  shop_id: string;
-  requirements: string;
-}
-
-export interface TelegramBotConfig {
-  bot_token: string;
-  bot_username: string;
-}
-
-class APIClient {
-  private client: AxiosInstance;
-  private token: string | null = null;
-
-  constructor() {
-    this.client = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: 10000,
-    });
-
-    // Load token from localStorage
-    this.token = localStorage.getItem('auth_token');
-    this.setupInterceptors();
+/**
+ * Request Interceptor: Auth & Correlation Tracking
+ */
+apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = secureStorage.getItem("auth_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+  return config;
+});
 
-  private setupInterceptors() {
-    // Request interceptor
-    this.client.interceptors.request.use((config) => {
-      if (this.token) {
-        config.headers.Authorization = `Bearer ${this.token}`;
-      }
-      return config;
-    });
-
-    // Response interceptor
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          // Clear token and redirect to login
-          this.clearToken();
-          window.location.href = '/login';
-        }
-        return Promise.reject(error);
-      }
-    );
-  }
-
-  setToken(token: string) {
-    this.token = token;
-    localStorage.setItem('auth_token', token);
-    this.setupInterceptors();
-  }
-
-  clearToken() {
-    this.token = null;
-    localStorage.removeItem('auth_token');
-  }
-
-  getToken() {
-    return this.token;
-  }
-
-  // Auth endpoints
-  async login(data: LoginRequest): Promise<LoginResponse> {
-    const response = await this.client.post('/auth/login', data);
-    return response.data;
-  }
-
-  async verifyToken(): Promise<boolean> {
-    try {
-      const response = await this.client.post('/auth/verify-token', {});
-      return response.data.success;
-    } catch {
-      return false;
+/**
+ * Response Interceptor: Error Handling, Retry Logic, and Correlation ID
+ */
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const config = error.config as InternalAxiosRequestConfig & { _retryCount?: number };
+    
+    const correlationId = error.response?.headers["x-request-id"] || 
+                          (error.response?.data as any)?.correlation_id;
+    
+    if (correlationId) {
+      console.error(`[API Error] Correlation ID: ${correlationId}`);
+      (error as any).correlationId = correlationId;
     }
-  }
 
-  async getMe(): Promise<MeResponse> {
-    const response = await this.client.get('/auth/me');
-    return response.data;
-  }
+    // Exponential Backoff Retry Mechanism (up to 3 retries)
+    if (
+      error.response && 
+      error.response.status >= 500 && 
+      (!config._retryCount || config._retryCount < 3)
+    ) {
+      config._retryCount = (config._retryCount || 0) + 1;
+      const backoffDelay = Math.pow(2, config._retryCount) * 1000;
+      
+      console.warn(`Retrying request (${config._retryCount}/3) in ${backoffDelay}ms...`);
+      
+      await new Promise(resolve => setTimeout(resolve, backoffDelay));
+      return apiClient(config);
+    }
 
-  // Dashboard endpoints
-  async getDashboardOverview(): Promise<DashboardOverview> {
-    const response = await this.client.get('/dashboard/overview');
-    return response.data;
-  }
+    // Handle Auth Expiration
+    if (error.response?.status === 401) {
+      secureStorage.removeItem("auth_token");
+      secureStorage.removeItem("auth_user");
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
 
-  async getOrders(page?: number, limit?: number): Promise<{ orders: Order[]; total: number }> {
-    const response = await this.client.get('/dashboard/orders', {
-      params: { page, limit },
-    });
-    return response.data;
+    return Promise.reject(error);
   }
+);
 
-  async getOrderById(orderId: string): Promise<Order> {
-    const response = await this.client.get(`/dashboard/orders/${orderId}`);
-    return response.data;
-  }
+export const authAPI = {
+  // FIXED: Parameter ကို UI နဲ့ ညှိပြီး phone လို့ ထားခဲ့မယ်၊ ဒါပေမယ့် Payload Body မှာ shop_id Key နဲ့ ပို့မယ်
+  login: (phone: string, password: string) =>
+    apiClient.post<LoginResponse>("/api/auth/login", {
+      shop_id: phone, // ရိုက်ထည့်လိုက်တဲ့ SM- တန်ဖိုးက shop_id အဖြစ် ထွက်သွားမယ်
+      password,
+    }),
+  verifyToken: () =>
+    apiClient.post("/api/auth/verify-token", {}),
+};
 
-  // ✅ [FIX] Backend လမ်းကြောင်းအတိုင်း /products ဆီ ပြောင်းခေါ်ထားတယ် Bro
-  async getProducts(page?: number, limit?: number): Promise<Product[]> {
-    const response = await this.client.get('/products', {
-      params: { page, limit },
-    });
-    return response.data;
-  }
+export const opsAPI = {
+  getStats: () =>
+    apiClient.get<SystemStats>("/api/ops/stats"),
+  getMerchants: (status?: string) =>
+    apiClient.get<Merchant[]>("/api/ops/merchants", { params: { status } }),
+  activateMerchant: (shopId: string) =>
+    apiClient.post(`/api/ops/merchants/${shopId}/activate`, {}),
+  suspendMerchant: (shopId: string) =>
+    apiClient.post(`/api/ops/merchants/${shopId}/suspend`, {}),
+  getAuditLogs: (limit?: number) =>
+    apiClient.get<AuditLog[]>("/api/ops/audit-logs", { params: { limit } }),
+};
 
-  // ✅ [FIX] Backend လမ်းကြောင်းအတိုင်း /products ဆီ POST Request ပို့အောင် ညှိလိုက်ပြီ Bro
-  async createProduct(data: { product_name: string; price: number; status: string }): Promise<{ success: boolean; data: Product }> {
-    const response = await this.client.post('/products', data);
-    return response.data;
-  }
+export const healthAPI = {
+  checkHealth: () =>
+    apiClient.get<HealthStatus>("/health"),
+};
 
-  async getAnalytics(): Promise<AnalyticsData> {
-    const response = await this.client.get('/dashboard/analytics');
-    return response.data;
-  }
-
-  async getProfile(): Promise<ProfileData> {
-    const response = await this.client.get('/dashboard/profile');
-    return response.data;
-  }
-
-  async updateSettings(data: Partial<ProfileData>): Promise<{ success: boolean }> {
-    const response = await this.client.post('/dashboard/settings', data);
-    return response.data;
-  }
-
-  async updateRequirements(shopId: string, requirements: string): Promise<{ success: boolean }> {
-    const response = await this.client.put(`/auth/merchant/requirements/${shopId}`, {
-      requirements,
-    });
-    return response.data;
-  }
-}
-
-export const apiClient = new APIClient();
+export default apiClient;
