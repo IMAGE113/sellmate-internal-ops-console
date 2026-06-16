@@ -67,10 +67,10 @@ apiClient.interceptors.response.use(
 );
 
 export const authAPI = {
-  // FIXED: Changed payload interface and body to use 'phone' instead of 'shop_id'
+  // FIXED: Parameter ကို UI နဲ့ ညှိပြီး phone လို့ ထားခဲ့မယ်၊ ဒါပေမယ့် Payload Body မှာ shop_id Key နဲ့ ပို့မယ်
   login: (phone: string, password: string) =>
     apiClient.post<LoginResponse>("/api/auth/login", {
-      phone,
+      shop_id: phone, // ရိုက်ထည့်လိုက်တဲ့ SM- တန်ဖိုးက shop_id အဖြစ် ထွက်သွားမယ်
       password,
     }),
   verifyToken: () =>
