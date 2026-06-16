@@ -7,7 +7,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (shopId: string, password: string) => Promise<void>;
+  login: (phone: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -16,8 +16,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Use ref for cleanup tracking to prevent memory leaks
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -26,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Check if user is already logged in on mount
+  // Check storage on mount
   useEffect(() => {
     const token = secureStorage.getItem("auth_token");
     const storedUser = secureStorage.getItem("auth_user");
@@ -47,20 +45,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (shopId: string, password: string) => {
+  // FIXED: Parameter changed back to phone as required by Ops Console backend contract
+  const login = useCallback(async (phone: string, password: string) => {
     setIsLoading(true);
     try {
       const response = await authAPI.login(phone, password);
       
-      // Destructure flattened response directly from backend
-      const {
-        token,
-        shop_id,
-        shop_name,
-        owner_name
-      } = response.data;
+      // FIXED: Destructuring exactly from backend response schema
+      const { token, id, email, role } = response.data;
       
-      const userData: AuthUser = { id, role, phone };
+      // FIXED: Constructing userData with verified properties from types.ts
+      const userData: AuthUser = {
+        id,
+        email,
+        role,
+        phone,
+      };
 
       secureStorage.setItem("auth_token", token);
       secureStorage.setItem("auth_user", JSON.stringify(userData));
