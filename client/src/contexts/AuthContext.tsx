@@ -53,9 +53,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authAPI.login(phone, password);
       
       // Destructure flattened response directly from backend
-      const { token, id, email, role } = response.data;
+      const {
+        token,
+        shop_id,
+        shop_name,
+        owner_name
+      } = response.data;
       
-      const userData: AuthUser = { id, email, role, phone };
+      const userData: AuthUser = { id, role, phone };
 
       secureStorage.setItem("auth_token", token);
       secureStorage.setItem("auth_user", JSON.stringify(userData));
