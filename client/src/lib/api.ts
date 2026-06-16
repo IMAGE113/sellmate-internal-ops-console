@@ -69,8 +69,11 @@ apiClient.interceptors.response.use(
 );
 
 export const authAPI = {
-  login: (phone: string, password: string) =>
-    apiClient.post<LoginResponse>("/api/auth/login", { phone, password }),
+  login: (shopId: string, password: string) =>
+  apiClient.post<LoginResponse>("/api/auth/login", {
+    shop_id: shopId,
+    password,
+  }),
   verifyToken: () =>
     apiClient.post("/api/auth/verify-token", {}),
 };
