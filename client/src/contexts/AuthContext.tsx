@@ -7,7 +7,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (phone: string, password: string) => Promise<void>;
+  login: (shopId: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
