@@ -45,21 +45,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // FIXED: Parameter changed back to phone as required by Ops Console backend contract
+  // FIXED: UI components တွေနဲ့ ကိုက်ညီအောင် interface ကို phone အတိုင်း ဆက်ထားတယ်
   const login = useCallback(async (phone: string, password: string) => {
     setIsLoading(true);
     try {
+      // api.ts က ပြင်ထားတဲ့ function ကို ဖုန်း input ထဲက တန်ဖိုး (SM-) လှမ်းပေးလိုက်တယ်
       const response = await authAPI.login(phone, password);
       
-      // FIXED: Destructuring exactly from backend response schema
+      // types.ts (LoginResponse) ရဲ့ Contract အမှန်အတိုင်းပဲ ခွဲထုတ်ဖတ်ယူတယ်
       const { token, id, email, role } = response.data;
       
-      // FIXED: Constructing userData with verified properties from types.ts
+      // AuthUser interface တည်ဆောက်ပုံအတိုင်း userData ကို လုံခြုံစွာ သတ်မှတ်တယ်
       const userData: AuthUser = {
         id,
         email,
         role,
-        phone,
+        phone, // UI က လာတဲ့ SM- တန်ဖိုးကို phone နေရာမှာပဲ ပြန်သိမ်းထားပေးခြင်း
       };
 
       secureStorage.setItem("auth_token", token);
